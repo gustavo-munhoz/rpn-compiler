@@ -1,0 +1,25 @@
+<program>      ::= <expr> <program_tail>
+
+<program_tail> ::= <expr> <program_tail>
+                 | ε
+
+<expr>      ::= L_PAREN <rpn> R_PAREN
+
+<rpn>       ::= KW_MEM
+             | <operand> <rpn_tail>
+
+<rpn_tail>  ::= <op_unary>
+             | <operand> <op_binary>
+
+<operand>   ::= NUM_INT
+             | NUM_FLOAT
+             | <expr>
+
+<op_unary>  ::= KW_MEM
+             | KW_RES
+             | KW_IF
+
+<op_binary> ::= KW_THEN
+              | KW_ELSE
+              | KW_FOR
+              | ARITHMETIC_OP

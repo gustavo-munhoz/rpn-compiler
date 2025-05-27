@@ -1,0 +1,8 @@
+FIRST(<program>) = { L_PAREN }
+FIRST(<program_tail>) = { L_PAREN, $ }
+FIRST(<expr>) = { L_PAREN }
+FIRST(<operand>)  = { NUM_INT, NUM_FLOAT, L_PAREN }
+FIRST(<op_unary>) = { KW_MEM, KW_RES, KW_IF }
+FIRST(<op_binary>) = { KW_THEN, KW_ELSE, KW_FOR, ARITHMETIC_OP }
+FIRST(<rpn_tail>) = { KW_MEM, KW_RES, KW_IF, NUM_INT, NUM_FLOAT, L_PAREN }
+FIRST(<rpn>) = { KW_MEM, NUM_INT, NUM_FLOAT, L_PAREN }

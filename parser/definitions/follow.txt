@@ -1,0 +1,15 @@
+FOLLOW(<program>)   = { }
+FOLLOW(<program_tail>) = { }
+FOLLOW(<expr>)      = { KW_MEM, KW_RES, KW_IF,
+                        NUM_INT, NUM_FLOAT, L_PAREN,
+                        KW_THEN, KW_ELSE, KW_FOR, ARITHMETIC_OP }
+
+FOLLOW(<rpn>)       = { R_PAREN }
+FOLLOW(<rpn_tail>)  = { R_PAREN }
+
+FOLLOW(<operand>)   = { KW_MEM, KW_RES, KW_IF,
+                        NUM_INT, NUM_FLOAT, L_PAREN,
+                        KW_THEN, KW_ELSE, KW_FOR, ARITHMETIC_OP }
+
+FOLLOW(<op_unary>)  = { R_PAREN }
+FOLLOW(<op_binary>) = { R_PAREN }

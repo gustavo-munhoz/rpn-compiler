@@ -12,6 +12,6 @@
 ((1 RES) MEM)
 (MEM)
 (2 IF)
-((MEM) THEN)
-((1 RES) ELSE)
+((MEM) 2 THEN)
+((1 RES) 2 ELSE)
 (3 5 FOR)

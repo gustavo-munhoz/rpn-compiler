@@ -15,12 +15,12 @@ ACCEPTING_STATES = {
     S.NUM_FRAC: TokenType.NUM_FLOAT,
     S.BIN_OP: TokenType.ARITHMETIC_OP,
     S.OP_MINUS: TokenType.ARITHMETIC_OP,
-    S.KW_RES: TokenType.KEYWORD,
-    S.KW_MEM: TokenType.KEYWORD,
-    S.KW_IF: TokenType.KEYWORD,
-    S.KW_THEN: TokenType.KEYWORD,
-    S.KW_ELSE: TokenType.KEYWORD,
-    S.KW_FOR: TokenType.KEYWORD,
+    S.KW_RES: TokenType.KW_RES,
+    S.KW_MEM: TokenType.KW_MEM,
+    S.KW_IF: TokenType.KW_IF,
+    S.KW_THEN: TokenType.KW_THEN,
+    S.KW_ELSE: TokenType.KW_ELSE,
+    S.KW_FOR: TokenType.KW_FOR,
 }
 
 WHITESPACE = " \t\r\n"
@@ -61,7 +61,13 @@ class Lexer(Iterator[Token]):
 
     def _emit(self, token_type: TokenType) -> None:
         lex = "".join(self.lexeme)
-        token = Token(token_type, lex, self.line, self.col - len(lex))
+        token = Token(
+            token_type,
+            lex,
+            self.line,
+            self.col - len(lex),
+            self._current_line_text()
+        )
         self.pending_token = token
         self.lexeme.clear()
         self.state = S.START
