@@ -11,7 +11,3 @@
 (99 -6.5 %)
 ((1 RES) MEM)
 (MEM)
-(2 IF)
-((MEM) 2 THEN)
-((1 RES) 2 ELSE)
-(3 5 FOR)

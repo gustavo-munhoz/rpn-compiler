@@ -1,5 +1,5 @@
 FIRST(<program>) = { L_PAREN }
-FIRST(<program_tail>) = { L_PAREN, $ }
+FIRST(<program_tail>) = { L_PAREN, ε }
 FIRST(<expr>) = { L_PAREN }
 FIRST(<operand>)  = { NUM_INT, NUM_FLOAT, L_PAREN }
 FIRST(<op_unary>) = { KW_MEM, KW_RES, KW_IF }

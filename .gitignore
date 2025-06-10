@@ -1,4 +1,6 @@
 __pycache__
+*.png
+*.asm
 .DS_Store
 .idea
 .venv

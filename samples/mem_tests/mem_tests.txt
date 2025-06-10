@@ -1,0 +1,6 @@
+(10 MEM)
+(MEM)
+((MEM) 5 +)
+(-2.5 MEM)
+(MEM)
+((MEM) (MEM) *)

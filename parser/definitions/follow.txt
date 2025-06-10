@@ -1,5 +1,5 @@
-FOLLOW(<program>)   = { }
-FOLLOW(<program_tail>) = { }
+FOLLOW(<program>)   = { $ }
+FOLLOW(<program_tail>) = { $ }
 FOLLOW(<expr>)      = { KW_MEM, KW_RES, KW_IF,
                         NUM_INT, NUM_FLOAT, L_PAREN,
                         KW_THEN, KW_ELSE, KW_FOR, ARITHMETIC_OP }
