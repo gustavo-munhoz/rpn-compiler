@@ -9,17 +9,14 @@ fi
 INPUT_FILE="$1"
 
 # --- ETAPA 1: Compilar o código fonte para Assembly usando Python ---
-# Esta é a única linha que mudou.
 echo "Compiling with Python compiler..."
 python3 main.py "$INPUT_FILE"
 
-# Verifica se o compilador Python executou com sucesso
 if [ $? -ne 0 ]; then
     echo "Error executing Python compiler (main.py)"
     exit 1
 fi
 
-# Define os nomes dos arquivos de saída (esta parte continua igual)
 BASE_NAME="${INPUT_FILE%.*}"
 ASM_FILE="${BASE_NAME}.asm"
 HEX_FILE="${BASE_NAME}.hex"
@@ -36,8 +33,8 @@ if [ $? -ne 0 ]; then
 fi
 
 # --- ETAPA 3: Enviar o .hex para o Arduino ---
-PORT="/dev/cu.usbserial-A5069RR4" # Verifique se esta porta ainda é a correta
-BAUD="57600" # <<< ATENÇÃO AQUI (veja nota abaixo)
+PORT="/dev/cu.usbserial-A5069RR4"
+BAUD="57600"
 
 echo "Uploading HEX to Arduino at port $PORT with baud rate $BAUD"
 avrdude -v -patmega328p -carduino -P "$PORT" -b "$BAUD" -D -U flash:w:"$HEX_FILE":i
@@ -52,7 +49,6 @@ echo "Uploaded successfully!"
 # --- ETAPA 4: Limpeza e Exibição de Resultados ---
 echo "Cleaning build files..."
 
-# O AVRA pode gerar outros arquivos, ajuste se necessário
 rm -f "${BASE_NAME}.obj" "${BASE_NAME}.eep.hex" "$HEX_FILE"
 
 echo "Done!"

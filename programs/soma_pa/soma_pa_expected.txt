@@ -1,0 +1,5 @@
+# Cálculo de soma de PA
+## N = 10
+## a0 = 5
+## r = 3
+=> Valor esperado: 185 (0x59C8)

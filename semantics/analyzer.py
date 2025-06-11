@@ -21,6 +21,7 @@ class SemanticAnalyzer:
     Percorre a AST para realizar a análise semântica, checando tipos,
     regras de negócio e realizando otimizações como constant folding.
     """
+
     def __init__(self, auto_cast: bool = True):
         self.auto_cast = auto_cast
 
@@ -85,41 +86,38 @@ class SemanticAnalyzer:
 
         left_type, right_type = left_child.eval_type, right_child.eval_type
 
+        if left_type not in (SemanticType.INT, SemanticType.FLOAT) or right_type not in (
+                SemanticType.INT, SemanticType.FLOAT):
+            raise SemanticError(
+                f"Operator '{node.label}' expects numeric operands, but received {left_type.name} and {right_type.name}.",
+                node.token)
+
+        if not self.auto_cast and left_type != right_type:
+            raise SemanticError(
+                f"Incompatible types for '{node.label}': {left_type.name} and {right_type.name}. (Automatic casting disabled)",
+                node.token)
+
         if node.label == '^':
-            if left_type not in (SemanticType.INT, SemanticType.FLOAT): raise SemanticError(
-                f"The base of an exponentiation ('^') must be numeric, but got {left_type.name}.", left_child.token)
             if right_type is not SemanticType.INT: raise SemanticError(
                 f"The exponent ('^') must be an INT, but got {right_type.name}.", right_child.token)
             if right_child.const_value is not None and right_child.const_value < 0: raise SemanticError(
                 f"The exponent ('^') must be a non-negative integer.", right_child.token)
-            node.eval_type = left_type
 
         elif node.label in ('/', '|', '%'):
-            if left_type not in (SemanticType.INT, SemanticType.FLOAT) or right_type not in (
-                    SemanticType.INT, SemanticType.FLOAT): raise SemanticError(
-                f"Operator '{node.label}' expects numeric operands, but received {left_type.name} and {right_type.name}.",
-                node.token)
             if right_child.const_value == 0: raise SemanticError("Division by literal zero.", right_child.token)
-            node.eval_type = SemanticType.FLOAT if node.label == '|' else SemanticType.INT
 
+        if node.label in ('/', '%'):
+            node.eval_type = SemanticType.INT
+        elif node.label == '^':
+            node.eval_type = left_type
+        elif left_type == SemanticType.FLOAT or right_type == SemanticType.FLOAT:
+            node.eval_type = SemanticType.FLOAT
         else:
-            if left_type not in (SemanticType.INT, SemanticType.FLOAT) or right_type not in (
-                    SemanticType.INT, SemanticType.FLOAT): raise SemanticError(
-                f"Operator '{node.label}' expects numeric operands,"
-                f" but received {left_type.name} and {right_type.name}.",
-                node.token)
-            if left_type == SemanticType.FLOAT or right_type == SemanticType.FLOAT:
-                node.eval_type = SemanticType.FLOAT
-                if self.auto_cast and left_type != right_type:
-                    if left_type == SemanticType.INT: left_child.needs_cast_to_float = True
-                    if right_type == SemanticType.INT: right_child.needs_cast_to_float = True
-                elif not self.auto_cast and left_type != right_type:
-                    raise SemanticError(
-                        f"Incompatible types for '{node.label}': {left_type.name} and {right_type.name}."
-                        f" (Automatic casting disabled)",
-                        node.token)
-            else:
-                node.eval_type = SemanticType.INT
+            node.eval_type = SemanticType.INT
+
+        if self.auto_cast and left_type != right_type:
+            if left_type == SemanticType.INT: left_child.needs_cast_to_float = True
+            if right_type == SemanticType.INT: right_child.needs_cast_to_float = True
 
         if left_child.const_value is not None and right_child.const_value is not None:
             left_val, right_val = left_child.const_value, right_child.const_value
@@ -193,33 +191,18 @@ class SemanticAnalyzer:
         node.eval_type = SemanticType.VOID
 
     def _visit_else(self, node: ASTNode, line_index: int):
-        if len(node.children) != 2: raise SemanticError("'ELSE' expects 2 operands.", node.token)
+        if len(node.children) != 2:
+            raise SemanticError("'ELSE' expects 2 operands.", node.token)
+
         then_node, else_branch = node.children
         self.analyze(then_node, line_index)
         self.analyze(else_branch, line_index)
+
         if then_node.label != 'THEN':
             raise SemanticError(f"The first operand for 'ELSE' must be 'THEN', but got '{then_node.label}'.",
                                 then_node.token)
 
-        then_branch_expr = then_node.children[1]
-        then_type = then_branch_expr.eval_type
-        else_type = else_branch.eval_type
-
-        if then_type not in (SemanticType.INT, SemanticType.FLOAT) or else_type not in (
-                SemanticType.INT, SemanticType.FLOAT):
-            raise SemanticError(
-                f"Conditional branches must be numeric types, but got {then_type.name} and {else_type.name}.",
-                node.token)
-
-        if then_type == else_type:
-            node.eval_type = then_type
-        elif self.auto_cast and {then_type, else_type} == {SemanticType.INT, SemanticType.FLOAT}:
-            node.eval_type = SemanticType.FLOAT
-        else:
-            raise SemanticError(
-                f"Incompatible types in conditional branches: THEN branch has type {then_type.name},"
-                f" but ELSE branch has type {else_type.name}.",
-                node.token)
+        node.eval_type = SemanticType.VOID
 
     def _visit_for(self, node: ASTNode, line_index: int):
         if len(node.children) != 2: raise SemanticError("'FOR' expects 2 operands.", node.token)

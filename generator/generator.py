@@ -264,36 +264,39 @@ class CodeGenerator:
         return temp_result
 
     def _generate_if_then_else(self, node: ASTNode, line_index: int) -> str:
+        # Desempacota a estrutura da AST para o IF/THEN/ELSE
         then_node = node.children[0]
         else_branch = node.children[1]
         if_node = then_node.children[0]
         then_branch = then_node.children[1]
         condition = if_node.children[0]
 
+        # Gera labels únicos para os saltos
         else_label = self.label_gen.new_label("else")
         end_if_label = self.label_gen.new_label("endif")
 
+        # Gera o código para avaliar a condição
         condition_loc = self._generate_expression(condition, line_index)
-        self.main_code.append(f"; IF-ELSE expression")
+        self.main_code.append(f"; IF-THEN-ELSE statement")
         self.main_code.append(self._generate_load_operand(condition_loc, "r24", "r25"))
         self.main_code.append("    RCALL is_f16_zero")
         self.main_code.append(f"    BREQ {else_label}")
 
-        then_loc = self._generate_expression(then_branch, line_index)
-        temp_final = self.temp_manager.new_temp()
-        self.main_code.append(self._generate_load_operand(then_loc, "r24", "r25"))
-        self.main_code.append(f"    STS {temp_final}_L, r24")
-        self.main_code.append(f"    STS {temp_final}_H, r25")
+        # Gera o código para o ramo THEN. O resultado da expressão é ignorado.
+        self.main_code.append(f"; THEN branch")
+        self._generate_expression(then_branch, line_index)
         self.main_code.append(f"    RJMP {end_if_label}")
 
+        # Gera o código para o ramo ELSE. O resultado da expressão é ignorado.
         self.main_code.append(f"{else_label}:")
-        else_loc = self._generate_expression(else_branch, line_index)
-        self.main_code.append(self._generate_load_operand(else_loc, "r24", "r25"))
-        self.main_code.append(f"    STS {temp_final}_L, r24")
-        self.main_code.append(f"    STS {temp_final}_H, r25")
+        self.main_code.append(f"; ELSE branch")
+        self._generate_expression(else_branch, line_index)
 
+        # Fim da estrutura condicional
         self.main_code.append(f"{end_if_label}:")
-        return temp_final
+
+        # Retorna uma string vazia para indicar que é uma declaração VOID.
+        return ""
 
     def _generate_if_then(self, node: ASTNode, line_index: int) -> str:
         if_node = node.children[0]
@@ -319,26 +322,32 @@ class CodeGenerator:
         loop_start_label = self.label_gen.new_label("for_start")
         loop_end_label = self.label_gen.new_label("for_end")
 
-        # Configura o contador do loop
         self.main_code.append(f"; FOR loop setup")
+
+        self.main_code.append("    PUSH r20")
+
         iterations_loc = self._generate_expression(iterations_node, line_index)
-        # Assume-se que f16_to_uint16 converte r25:r24 para r27:r26
-        # e que usaremos r26 como nosso contador de loop (8-bit, para simplicidade)
+
         self.main_code.append(self._generate_load_operand(iterations_loc, "r24", "r25"))
+        self.main_code.append("    MOV r22, r24")
+        self.main_code.append("    MOV r23, r25")
         self.main_code.append("    RCALL f16_to_uint16")
-        self.main_code.append("    MOV r20, r26 ; Usando r20 como contador")
+        self.main_code.append("    MOV r20, r26")
 
         self.main_code.append(f"{loop_start_label}:")
         self.main_code.append("    TST r20")
         self.main_code.append(f"    BREQ {loop_end_label}")
 
-        self._generate_expression(body_node, line_index)  # Executa o corpo, ignora resultado
+        self._generate_expression(body_node, line_index)
 
         self.main_code.append("    DEC r20")
         self.main_code.append(f"    RJMP {loop_start_label}")
 
         self.main_code.append(f"{loop_end_label}:")
-        return ""  # Declarações VOID não retornam localização
+
+        self.main_code.append("    POP r20")
+
+        return ""
 
     def _generate_res(self, node: ASTNode, line_index: int) -> str:
         child_node = node.children[0]
