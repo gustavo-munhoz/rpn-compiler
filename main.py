@@ -15,6 +15,7 @@ from semantics.errors import SemanticError
 from generator.generator import CodeGenerator, generate_full_header, generate_data_segment
 
 GREEN = "\033[32m"
+YELLOW = "\033[33m"
 RED = "\033[31m"
 RESET = "\033[0m"
 
@@ -56,7 +57,7 @@ def count_program_lines(program_node: ASTNode) -> int:
     return count
 
 
-def main(src_path_str: str, auto_cast: bool) -> None:
+def main(src_path_str: str) -> None:
     src_path = Path(src_path_str)
     if not src_path.is_file():
         print(f"{RED}[ERROR] File not found: {src_path}{RESET}")
@@ -80,12 +81,15 @@ def main(src_path_str: str, auto_cast: bool) -> None:
             tokens.append(Token(TokenType.EOF, "", line, col, src_line))
 
         # --- FASE 2: PARSER ---
+        print("Starting parsing...")
         parser = LL1Parser()
         ast_root = parser.parse(tokens)
         print(f"{GREEN}Syntax OK ✔{RESET}")
         render_image(src_path, ast_root)
 
         # --- FASE 3: ANÁLISE SEMÂNTICA ---
+        print("Starting semantic analysis...")
+        print(f"{YELLOW}AUTOMATIC TYPE-CASTING ENABLED.{RESET}")
         analyzer = SemanticAnalyzer()
         annotated_ast_root = analyzer.analyze(ast_root)
         print(f"{GREEN}Semantics OK ✔{RESET}")
@@ -126,9 +130,7 @@ def main(src_path_str: str, auto_cast: bool) -> None:
 if __name__ == "__main__":
     cli_parser = argparse.ArgumentParser(description="Compilador para a linguagem RPN.")
     cli_parser.add_argument("source_file", help="O arquivo de código fonte para compilar.")
-    cli_parser.add_argument("--no-cast", action="store_false", dest="auto_cast",
-                            help="Desativa o type casting automático de INT para FLOAT.")
 
     args = cli_parser.parse_args()
 
-    main(args.source_file, args.auto_cast)
+    main(args.source_file)
