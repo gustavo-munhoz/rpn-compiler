@@ -5,5 +5,10 @@ class SemanticType(Enum):
     INT = auto()
     FLOAT = auto()
     VOID = auto()
-    ANY = auto()
-    ERROR = auto()
+
+
+class SignType(Enum):
+    POSITIVE = auto()
+    NEGATIVE = auto()
+    ZERO = auto()
+    UNKNOWN = auto()

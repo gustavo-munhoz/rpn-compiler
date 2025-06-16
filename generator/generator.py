@@ -71,7 +71,6 @@ def generate_full_header():
         SET_MEM,
         GET_MEM,
         IS_F16_ZERO,
-        # adicionar if, then, else, for
         '\nmain:'
     ]
 
@@ -131,26 +130,20 @@ class CodeGenerator:
         Ponto de entrada que inicia a geração de código, navegando a
         estrutura recursiva de <program> e <program_tail>.
         """
-        # Garante que o programa não está vazio
         if not ast_root or ast_root.label != '<program>' or not ast_root.children:
             return
 
-        # Pela gramática, o <program> tem dois filhos: a primeira <expr> e o primeiro <program_tail>
         current_expr_node = ast_root.children[0]
         current_tail_node = ast_root.children[1]
         line_index = 0
 
-        # 1. Processa a primeira linha
         self._process_line(current_expr_node, line_index)
 
-        # 2. Inicia o loop através da "lista encadeada" de <program_tail>
         line_index = 1
         while current_tail_node and current_tail_node.label == '<program_tail>' and current_tail_node.children:
-            # O primeiro filho da cauda é a expressão da linha atual
             current_expr_node = current_tail_node.children[0]
             self._process_line(current_expr_node, line_index)
 
-            # O segundo filho é a próxima cauda (ou um nó vazio no final)
             current_tail_node = current_tail_node.children[1]
             line_index += 1
 
@@ -161,10 +154,8 @@ class CodeGenerator:
         """
         self.main_code.append(f"\n; --- Line {line_index + 1} ---")
 
-        # Gera o código para a expressão. O resultado está em 'final_loc'.
         final_loc = self._generate_expression(line_node, line_index)
 
-        # Se a linha for uma declaração (como FOR ou IF/THEN), ela não retorna um local.
         if not final_loc:
             return
 
@@ -215,8 +206,6 @@ class CodeGenerator:
             return self._generate_binary_op(node, line_index)
         elif node.label == 'ELSE':
             return self._generate_if_then_else(node, line_index)
-        elif node.label == 'THEN':
-            return self._generate_if_then(node, line_index)
         elif node.label == 'FOR':
             return self._generate_for(node, line_index)
         elif node.label == 'RES':
@@ -264,57 +253,43 @@ class CodeGenerator:
         return temp_result
 
     def _generate_if_then_else(self, node: ASTNode, line_index: int) -> str:
-        # Desempacota a estrutura da AST para o IF/THEN/ELSE
         then_node = node.children[0]
         else_branch = node.children[1]
         if_node = then_node.children[0]
         then_branch = then_node.children[1]
         condition = if_node.children[0]
 
-        # Gera labels únicos para os saltos
         else_label = self.label_gen.new_label("else")
         end_if_label = self.label_gen.new_label("endif")
 
-        # Gera o código para avaliar a condição
+        # Cria uma variável temporária para guardar o resultado da expressão.
+        temp_final = self.temp_manager.new_temp()
+
+        # Avalia a condição
         condition_loc = self._generate_expression(condition, line_index)
-        self.main_code.append(f"; IF-THEN-ELSE statement")
+        self.main_code.append(f"; IF-ELSE expression")
         self.main_code.append(self._generate_load_operand(condition_loc, "r24", "r25"))
         self.main_code.append("    RCALL is_f16_zero")
         self.main_code.append(f"    BREQ {else_label}")
 
-        # Gera o código para o ramo THEN. O resultado da expressão é ignorado.
-        self.main_code.append(f"; THEN branch")
-        self._generate_expression(then_branch, line_index)
+        # Bloco THEN
+        then_loc = self._generate_expression(then_branch, line_index)
+        self.main_code.append(self._generate_load_operand(then_loc, "r24", "r25"))
+        self.main_code.append(f"    STS {temp_final}_L, r24")  # Salva o resultado na temp
+        self.main_code.append(f"    STS {temp_final}_H, r25")
         self.main_code.append(f"    RJMP {end_if_label}")
 
-        # Gera o código para o ramo ELSE. O resultado da expressão é ignorado.
+        # Bloco ELSE
         self.main_code.append(f"{else_label}:")
-        self.main_code.append(f"; ELSE branch")
-        self._generate_expression(else_branch, line_index)
-
-        # Fim da estrutura condicional
-        self.main_code.append(f"{end_if_label}:")
-
-        # Retorna uma string vazia para indicar que é uma declaração VOID.
-        return ""
-
-    def _generate_if_then(self, node: ASTNode, line_index: int) -> str:
-        if_node = node.children[0]
-        then_branch = node.children[1]
-        condition = if_node.children[0]
-
-        end_if_label = self.label_gen.new_label("endif")
-
-        condition_loc = self._generate_expression(condition, line_index)
-        self.main_code.append(f"; IF-THEN statement")
-        self.main_code.append(self._generate_load_operand(condition_loc, "r24", "r25"))
-        self.main_code.append("    RCALL is_f16_zero")
-        self.main_code.append(f"    BREQ {end_if_label}")
-
-        self._generate_expression(then_branch, line_index)  # Gera o código, mas ignora o resultado
+        else_loc = self._generate_expression(else_branch, line_index)
+        self.main_code.append(self._generate_load_operand(else_loc, "r24", "r25"))
+        self.main_code.append(f"    STS {temp_final}_L, r24")  # Salva o resultado na temp
+        self.main_code.append(f"    STS {temp_final}_H, r25")
 
         self.main_code.append(f"{end_if_label}:")
-        return ""  # Declarações VOID não retornam localização
+
+        # Retorna a localização do resultado final.
+        return temp_final
 
     def _generate_for(self, node: ASTNode, line_index: int) -> str:
         iterations_node, body_node = node.children
@@ -322,36 +297,40 @@ class CodeGenerator:
         loop_start_label = self.label_gen.new_label("for_start")
         loop_end_label = self.label_gen.new_label("for_end")
 
+        # Cria uma variável temporária ANTES do laço para guardar o último resultado.
+        temp_for_result = self.temp_manager.new_temp()
+
+        # Configura o contador do loop
         self.main_code.append(f"; FOR loop setup")
-
-        self.main_code.append("    PUSH r20")
-
         iterations_loc = self._generate_expression(iterations_node, line_index)
-
         self.main_code.append(self._generate_load_operand(iterations_loc, "r24", "r25"))
         self.main_code.append("    MOV r22, r24")
         self.main_code.append("    MOV r23, r25")
         self.main_code.append("    RCALL f16_to_uint16")
-        self.main_code.append("    MOV r20, r26")
+        self.main_code.append("    MOV r20, r26 ; Usando r20 como contador")
 
         self.main_code.append(f"{loop_start_label}:")
         self.main_code.append("    TST r20")
         self.main_code.append(f"    BREQ {loop_end_label}")
 
-        self._generate_expression(body_node, line_index)
+        # Executa o corpo e obtém a localização do resultado da iteração
+        body_result_loc = self._generate_expression(body_node, line_index)
+        # Salva o resultado desta iteração na nossa variável temporária
+        self.main_code.append(self._generate_load_operand(body_result_loc, "r24", "r25"))
+        self.main_code.append(f"    STS {temp_for_result}_L, r24")
+        self.main_code.append(f"    STS {temp_for_result}_H, r25")
 
         self.main_code.append("    DEC r20")
         self.main_code.append(f"    RJMP {loop_start_label}")
 
         self.main_code.append(f"{loop_end_label}:")
 
-        self.main_code.append("    POP r20")
-
-        return ""
+        # Retorna a localização do último valor calculado.
+        return temp_for_result
 
     def _generate_res(self, node: ASTNode, line_index: int) -> str:
         child_node = node.children[0]
-        n_value = int(child_node.const_value)
+        n_value = int(child_node.label)
 
         target_line_index = line_index - n_value
 

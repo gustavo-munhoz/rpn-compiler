@@ -1,216 +1,201 @@
 from parser.ast_node import ASTNode
-from .types import SemanticType
+from .types import SemanticType, SignType
 from .errors import SemanticError
-
-
-def _is_number(s: str) -> bool:
-    try:
-        float(s)
-        return True
-    except (ValueError, TypeError):
-        return False
-
-
-def _visit_literal(node: ASTNode):
-    node.eval_type = SemanticType.FLOAT if '.' in node.label else SemanticType.INT
-    node.const_value = float(node.label) if node.eval_type == SemanticType.FLOAT else int(node.label)
+from semantics.annotated_ast import AnnotatedASTNode
+from typing import List
 
 
 class SemanticAnalyzer:
     """
-    Percorre a AST para realizar a análise semântica, checando tipos,
-    regras de negócio e realizando otimizações como constant folding.
+    Percorre a AST do parser e retorna uma nova árvore anotada,
+    com informações de tipo e sinal, aplicando as regras semânticas da linguagem.
     """
 
-    def __init__(self, auto_cast: bool = True):
-        self.auto_cast = auto_cast
+    def __init__(self):
+        # O autocasting é o comportamento padrão, não precisa de flag.
+        pass
 
-    def analyze(self, node: ASTNode, line_index: int = 0):
+    def analyze(self, node: ASTNode, line_index: int = 0) -> AnnotatedASTNode:
+        """
+        Método despachante principal. Ele delega a construção do nó anotado
+        para o método de construção (_build_...) apropriado.
+        """
+        # A recursão agora é tratada dentro de cada método de construção.
         if node.label == '<program>':
-            self._visit_program(node)
-        elif node.label == '<program_tail>':
-            self._visit_program_tail(node, line_index)
-        elif _is_number(node.label):
-            _visit_literal(node)
+            return self._build_program_node(node)
+        elif self._is_number(node.label):
+            return self._build_literal_node(node)
         elif node.label in ['+', '-', '*', '/', '|', '%', '^']:
-            self._visit_binary_op(node, line_index)
+            return self._build_binary_op_node(node, line_index)
         elif node.label == 'RES':
-            self._visit_res(node, line_index)
+            return self._build_res_node(node, line_index)
         elif node.label == 'MEM':
-            self._visit_mem(node, line_index)
+            return self._build_mem_node(node, line_index)
         elif node.label == 'IF':
-            self._visit_if(node, line_index)
+            return self._build_if_node(node, line_index)
         elif node.label == 'THEN':
-            self._visit_then(node, line_index)
+            return self._build_then_node(node, line_index)
         elif node.label == 'ELSE':
-            self._visit_else(node, line_index)
+            return self._build_else_node(node, line_index)
         elif node.label == 'FOR':
-            self._visit_for(node, line_index)
+            return self._build_for_node(node, line_index)
+        elif node.label == '<program_tail>':
+            return AnnotatedASTNode(label=node.label, children=[], eval_type=SemanticType.VOID, sign=SignType.UNKNOWN,
+                                    original_token=node.token)
         else:
             raise SemanticError(f"No semantic analysis rule found for node: '{node.label}'", node.token)
 
-    def _visit_program(self, node: ASTNode):
-        if not node.children:
-            node.eval_type = SemanticType.VOID
-            return
+    def _is_number(self, s: str) -> bool:
+        try:
+            float(s); return True
+        except (ValueError, TypeError):
+            return False
 
-        expr_node = node.children[0]
-        tail_node = node.children[1]
+    def _get_sign_from_literal(self, value_str: str) -> SignType:
+        value = float(value_str)
+        if value > 0: return SignType.POSITIVE
+        if value < 0: return SignType.NEGATIVE
+        return SignType.ZERO
 
-        self.analyze(expr_node, 0)
-        self.analyze(tail_node, 1)
+    def _build_literal_node(self, node: ASTNode) -> AnnotatedASTNode:
+        eval_type = SemanticType.FLOAT if '.' in node.label else SemanticType.INT
+        sign = self._get_sign_from_literal(node.label)
+        return AnnotatedASTNode(label=node.label, children=[], eval_type=eval_type, sign=sign,
+                                original_token=node.token)
 
-        node.eval_type = SemanticType.VOID
+    def _build_program_node(self, node: ASTNode) -> AnnotatedASTNode:
+        """
+        Constrói o nó para a raiz do programa, gerenciando a contagem de linhas
+        de forma segura para programas de uma ou mais linhas.
+        """
+        annotated_children = []
 
-    def _visit_program_tail(self, node: ASTNode, line_index: int):
-        if not node.children:
-            node.eval_type = SemanticType.VOID
-            return
+        if node.children:
+            line_idx = 0
+            first_expr_node = node.children[0]
+            annotated_children.append(self.analyze(first_expr_node, line_idx))
 
-        expr_node = node.children[0]
-        next_tail_node = node.children[1]
+            if len(node.children) > 1:
+                current_tail = node.children[1]
+                line_idx = 1
+                while current_tail and current_tail.children:
+                    annotated_children.append(self.analyze(current_tail.children[0], line_idx))
+                    current_tail = current_tail.children[1] if len(current_tail.children) > 1 else None
+                    line_idx += 1
 
-        self.analyze(expr_node, line_index)
-        self.analyze(next_tail_node, line_index + 1)
-
-        node.eval_type = SemanticType.VOID
-
-    def _visit_binary_op(self, node: ASTNode, line_index: int):
-        if len(node.children) != 2:
-            raise SemanticError(
-                f"Binary operator '{node.label}' expects 2 operands, but received {len(node.children)}.", node.token)
-
-        left_child, right_child = node.children
-        self.analyze(left_child, line_index)
-        self.analyze(right_child, line_index)
-
-        left_type, right_type = left_child.eval_type, right_child.eval_type
-
-        if left_type not in (SemanticType.INT, SemanticType.FLOAT) or right_type not in (
-                SemanticType.INT, SemanticType.FLOAT):
-            raise SemanticError(
-                f"Operator '{node.label}' expects numeric operands, but received {left_type.name} and {right_type.name}.",
-                node.token)
-
-        if not self.auto_cast and left_type != right_type:
-            raise SemanticError(
-                f"Incompatible types for '{node.label}': {left_type.name} and {right_type.name}. (Automatic casting disabled)",
-                node.token)
-
-        if node.label == '^':
-            if right_type is not SemanticType.INT: raise SemanticError(
-                f"The exponent ('^') must be an INT, but got {right_type.name}.", right_child.token)
-            if right_child.const_value is not None and right_child.const_value < 0: raise SemanticError(
-                f"The exponent ('^') must be a non-negative integer.", right_child.token)
-
-        elif node.label in ('/', '|', '%'):
-            if right_child.const_value == 0: raise SemanticError("Division by literal zero.", right_child.token)
-
-        if node.label in ('/', '%'):
-            node.eval_type = SemanticType.INT
-        elif node.label == '^':
-            node.eval_type = left_type
-        elif left_type == SemanticType.FLOAT or right_type == SemanticType.FLOAT:
-            node.eval_type = SemanticType.FLOAT
-        else:
-            node.eval_type = SemanticType.INT
-
-        if self.auto_cast and left_type != right_type:
-            if left_type == SemanticType.INT: left_child.needs_cast_to_float = True
-            if right_type == SemanticType.INT: right_child.needs_cast_to_float = True
-
-        if left_child.const_value is not None and right_child.const_value is not None:
-            left_val, right_val = left_child.const_value, right_child.const_value
-            op, result = node.label, 0.0
-            if op == '+':
-                result = left_val + right_val
-            elif op == '-':
-                result = left_val - right_val
-            elif op == '*':
-                result = left_val * right_val
-            elif op == '^':
-                result = left_val ** right_val
-            elif op == '%':
-                result = left_val % right_val
-            elif op == '|' and right_val != 0:
-                result = left_val / right_val
-            elif op == '/' and right_val != 0:
-                result = left_val // right_val
-            node.const_value = int(result) if node.eval_type == SemanticType.INT and result == int(result) else float(
-                result)
-
-    def _visit_res(self, node: ASTNode, line_index: int):
-        if len(node.children) != 1: raise SemanticError("'RES' expects 1 operand.", node.token)
-        child = node.children[0]
-        self.analyze(child, line_index)
-
-        if child.eval_type is not SemanticType.INT:
-            raise SemanticError(f"'RES' expects an INT operand, but received {child.eval_type.name}.", child.token)
-
-        if child.const_value is not None:
-            n_value = int(child.const_value)
-            if n_value <= 0:
-                raise SemanticError("'RES' operand must be a positive integer (e.g., 1, 2...).", child.token)
-            if n_value > line_index:
+        for final_expr_node in annotated_children:
+            if final_expr_node.label in ('IF', 'THEN'):
                 raise SemanticError(
-                    f"Cannot 'RES' {n_value} lines back. Only {line_index} previous result(s) are available.",
-                    child.token)
+                    f"Incomplete conditional: '{final_expr_node.label}' is not a valid top-level expression.",
+                    final_expr_node.original_token
+                )
 
-        node.eval_type = SemanticType.FLOAT
+        return AnnotatedASTNode(label=node.label, children=annotated_children, eval_type=SemanticType.VOID,
+                                sign=SignType.UNKNOWN, original_token=node.token)
 
-    def _visit_mem(self, node: ASTNode, line_index: int):
-        if len(node.children) == 1:
-            child = node.children[0]
-            self.analyze(child, line_index)
-            if child.eval_type not in (SemanticType.INT, SemanticType.FLOAT):
-                raise SemanticError(f"'MEM' (write) expects a numeric operand, but received {child.eval_type.name}.",
-                                    child.token)
-            node.eval_type = child.eval_type
-        elif len(node.children) == 0:
-            node.eval_type = SemanticType.FLOAT
+    def _build_binary_op_node(self, node: ASTNode, line_index: int) -> AnnotatedASTNode:
+        left_child = self.analyze(node.children[0], line_index)
+        right_child = self.analyze(node.children[1], line_index)
+
+        op = node.label
+        if left_child.eval_type not in (SemanticType.INT, SemanticType.FLOAT) or right_child.eval_type not in (
+        SemanticType.INT, SemanticType.FLOAT):
+            raise SemanticError(f"Operator '{op}' expects numeric operands.", node.token)
+
+        result_type = left_child.eval_type
+        if op == '^':
+            if right_child.eval_type is not SemanticType.INT:
+                raise SemanticError(f"The exponent ('^') must be an INT.", right_child.original_token)
+            if self._is_number(right_child.label) and int(right_child.label) < 0:
+                raise SemanticError(f"The exponent ('^') must be a non-negative integer literal.",
+                                    right_child.original_token)
+            result_type = left_child.eval_type
         else:
-            raise SemanticError("'MEM' expects 0 or 1 operands.", node.token)
+            if op in ('/', '|', '%') and self._is_number(right_child.label) and float(right_child.label) == 0:
+                raise SemanticError(f"Division by literal zero for operator '{op}'.", right_child.original_token)
 
-    def _visit_if(self, node: ASTNode, line_index: int):
-        if len(node.children) != 1: raise SemanticError("'IF' expects 1 operand (the condition).", node.token)
-        condition = node.children[0]
-        self.analyze(condition, line_index)
+            if left_child.eval_type == SemanticType.FLOAT or right_child.eval_type == SemanticType.FLOAT:
+                result_type = SemanticType.FLOAT
+                if left_child.eval_type != right_child.eval_type:
+                    if left_child.eval_type == SemanticType.INT: left_child.needs_cast_to_float = True
+                    if right_child.eval_type == SemanticType.INT: right_child.needs_cast_to_float = True
+            else:
+                result_type = SemanticType.INT
+
+        return AnnotatedASTNode(label=op, children=[left_child, right_child], eval_type=result_type,
+                                sign=SignType.UNKNOWN, original_token=node.token)
+
+    def _build_res_node(self, node: ASTNode, line_index: int) -> AnnotatedASTNode:
+        child = self.analyze(node.children[0], line_index)
+        if child.eval_type is not SemanticType.INT:
+            raise SemanticError(f"'RES' expects an INT operand.", child.original_token)
+        if self._is_number(child.label):
+            n_value = int(child.label)
+            if n_value <= 0: raise SemanticError("'RES' operand must be a positive integer.", child.original_token)
+            if n_value > line_index: raise SemanticError(
+                f"Cannot 'RES' {n_value} lines back. Only {line_index} previous result(s) are available.",
+                child.original_token)
+        return AnnotatedASTNode(label=node.label, children=[child], eval_type=SemanticType.FLOAT, sign=SignType.UNKNOWN,
+                                original_token=node.token)
+
+    def _build_mem_node(self, node: ASTNode, line_index: int) -> AnnotatedASTNode:
+        if node.children:  # Escrita
+            child = self.analyze(node.children[0], line_index)
+            if child.eval_type not in (SemanticType.INT, SemanticType.FLOAT):
+                raise SemanticError("'MEM' (write) expects a numeric operand.", child.original_token)
+            return AnnotatedASTNode(label=node.label, children=[child], eval_type=child.eval_type, sign=child.sign,
+                                    original_token=node.token)
+        else:  # Leitura
+            return AnnotatedASTNode(label=node.label, children=[], eval_type=SemanticType.FLOAT, sign=SignType.UNKNOWN,
+                                    original_token=node.token)
+
+    def _build_if_node(self, node: ASTNode, line_index: int) -> AnnotatedASTNode:
+        condition = self.analyze(node.children[0], line_index)
         if condition.eval_type not in (SemanticType.INT, SemanticType.FLOAT):
-            raise SemanticError(f"The IF condition must be numeric, but got type {condition.eval_type.name}.",
-                                condition.token)
-        node.eval_type = SemanticType.VOID
+            raise SemanticError("IF condition must be numeric.", condition.original_token)
+        return AnnotatedASTNode(label=node.label, children=[condition], eval_type=SemanticType.VOID,
+                                sign=SignType.UNKNOWN, original_token=node.token)
 
-    def _visit_then(self, node: ASTNode, line_index: int):
-        if len(node.children) != 2: raise SemanticError("'THEN' expects 2 operands.", node.token)
-        if_node, then_branch = node.children
-        self.analyze(if_node, line_index)
-        self.analyze(then_branch, line_index)
+    def _build_then_node(self, node: ASTNode, line_index: int) -> AnnotatedASTNode:
+        # Este método não é chamado pelo despachante, mas serve para a recursão interna
+        if_node = self.analyze(node.children[0], line_index)
+        then_branch = self.analyze(node.children[1], line_index)
         if if_node.label != 'IF':
-            raise SemanticError(f"The first operand for 'THEN' must be 'IF',"
-                                f" but got '{if_node.label}'.", if_node.token)
-        node.eval_type = SemanticType.VOID
+            raise SemanticError(f"The first operand for 'THEN' must be 'IF', but got '{if_node.label}'.",
+                                if_node.original_token)
+        # Propaga as anotações do ramo THEN
+        return AnnotatedASTNode(label=node.label, children=[if_node, then_branch], eval_type=then_branch.eval_type,
+                                sign=then_branch.sign, original_token=node.token)
 
-    def _visit_else(self, node: ASTNode, line_index: int):
-        if len(node.children) != 2:
-            raise SemanticError("'ELSE' expects 2 operands.", node.token)
+    def _build_else_node(self, node: ASTNode, line_index: int) -> AnnotatedASTNode:
+        # A lógica do _build_then está implícita aqui, pois seus filhos já foram analisados
+        then_node_annotated = self.analyze(node.children[0], line_index)
+        else_branch_annotated = self.analyze(node.children[1], line_index)
 
-        then_node, else_branch = node.children
-        self.analyze(then_node, line_index)
-        self.analyze(else_branch, line_index)
+        if then_node_annotated.label != 'THEN':
+            raise SemanticError(f"The first operand for 'ELSE' must be 'THEN', but got '{then_node_annotated.label}'.",
+                                then_node_annotated.original_token)
 
-        if then_node.label != 'THEN':
-            raise SemanticError(f"The first operand for 'ELSE' must be 'THEN', but got '{then_node.label}'.",
-                                then_node.token)
+        then_type = then_node_annotated.eval_type
+        else_type = else_branch_annotated.eval_type
 
-        node.eval_type = SemanticType.VOID
-
-    def _visit_for(self, node: ASTNode, line_index: int):
-        if len(node.children) != 2: raise SemanticError("'FOR' expects 2 operands.", node.token)
-        iterations, body_expr = node.children
-        self.analyze(iterations, line_index)
-        self.analyze(body_expr, line_index)
-        if iterations.eval_type != SemanticType.INT:
+        if then_type != else_type:
             raise SemanticError(
-                f"The first operand for FOR (iterations) must be INT, but got {iterations.eval_type.name}.",
-                iterations.token)
-        node.eval_type = SemanticType.VOID
+                f"Incompatible types in conditional branches: THEN branch has type {then_type.name}, but ELSE branch has type {else_type.name}. Types must be identical.",
+                node.token)
+
+        # O sinal é desconhecido pois não sabemos qual ramo será executado
+        return AnnotatedASTNode(label=node.label, children=[then_node_annotated, else_branch_annotated],
+                                eval_type=then_type, sign=SignType.UNKNOWN, original_token=node.token)
+
+    def _build_for_node(self, node: ASTNode, line_index: int) -> AnnotatedASTNode:
+        iterations = self.analyze(node.children[0], line_index)
+        body_expr = self.analyze(node.children[1], line_index)
+
+        if iterations.eval_type is not SemanticType.INT:
+            raise SemanticError(f"The loop count for 'FOR' must be an INT, but got {iterations.eval_type.name}.",
+                                iterations.original_token)
+
+        # O FOR retorna o valor/tipo/sinal da última iteração do corpo
+        return AnnotatedASTNode(label=node.label, children=[iterations, body_expr], eval_type=body_expr.eval_type,
+                                sign=body_expr.sign, original_token=node.token)

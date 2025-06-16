@@ -8,7 +8,7 @@ from lexer.errors import LexError
 from parser.ast_node import ASTNode
 from parser.parser import LL1Parser
 from parser.errors import LL1SyntaxError
-from parser.render import render_ast
+from parser.render import render_ast, render_annotated_ast
 from semantics.analyzer import SemanticAnalyzer
 from semantics.errors import SemanticError
 
@@ -86,14 +86,19 @@ def main(src_path_str: str, auto_cast: bool) -> None:
         render_image(src_path, ast_root)
 
         # --- FASE 3: ANÁLISE SEMÂNTICA ---
-        analyzer = SemanticAnalyzer(auto_cast=auto_cast)
-        analyzer.analyze(ast_root)
+        analyzer = SemanticAnalyzer()
+        annotated_ast_root = analyzer.analyze(ast_root)
         print(f"{GREEN}Semantics OK ✔{RESET}")
+
+        out_png = src_path.with_suffix("").with_name(src_path.stem + "_annotated_ast.png")
+        graph = render_annotated_ast(annotated_ast_root)
+        graph.render(out_png.with_suffix("").as_posix(), format="png", cleanup=True)
+        print(f"{GREEN}Annotated AST image saved to {out_png}{RESET}")
 
         # --- FASE 4: GERAÇÃO DE CÓDIGO ---
         print("Starting code generation...")
         code_gen = CodeGenerator()
-        code_gen.generate(ast_root)  # Gera o código principal
+        code_gen.generate(ast_root)
         print(f"{GREEN}Code Generation OK ✔{RESET}")
 
         # --- FASE 5: MONTAGEM DO ARQUIVO FINAL ---
