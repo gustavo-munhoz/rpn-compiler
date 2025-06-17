@@ -38,20 +38,15 @@ def count_program_lines(program_node: ASTNode) -> int:
     """
     Percorre a AST gerada pela gramática para contar o número total de linhas/expressões.
     """
-    # Se o programa estiver vazio ou malformado
     if not program_node or program_node.label != '<program>' or not program_node.children:
         return 0
 
-    # A primeira linha está sempre presente
     count = 1
 
-    # Pega o início da "cauda" recursiva do programa
     current_tail = program_node.children[1]
 
-    # Percorre a "lista encadeada" de <program_tail>
     while current_tail and current_tail.label == '<program_tail>' and current_tail.children:
         count += 1
-        # Avança para o próximo nó <program_tail>
         current_tail = current_tail.children[1]
 
     return count

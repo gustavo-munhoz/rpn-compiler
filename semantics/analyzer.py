@@ -12,7 +12,6 @@ class SemanticAnalyzer:
     """
 
     def __init__(self):
-        # O autocasting é o comportamento padrão, não precisa de flag.
         pass
 
     def analyze(self, node: ASTNode, line_index: int = 0) -> AnnotatedASTNode:
@@ -20,7 +19,7 @@ class SemanticAnalyzer:
         Método despachante principal. Ele delega a construção do nó anotado
         para o método de construção (_build_...) apropriado.
         """
-        # A recursão agora é tratada dentro de cada método de construção.
+
         if node.label == '<program>':
             return self._build_program_node(node)
         elif self._is_number(node.label):
@@ -114,7 +113,13 @@ class SemanticAnalyzer:
             if op in ('/', '|', '%') and self._is_number(right_child.label) and float(right_child.label) == 0:
                 raise SemanticError(f"Division by literal zero for operator '{op}'.", right_child.original_token)
 
-            if left_child.eval_type == SemanticType.FLOAT or right_child.eval_type == SemanticType.FLOAT:
+            if op in ('%', '|'):
+                result_type = SemanticType.FLOAT
+
+            elif op == '/':
+                result_type = SemanticType.INT
+
+            elif left_child.eval_type == SemanticType.FLOAT or right_child.eval_type == SemanticType.FLOAT:
                 result_type = SemanticType.FLOAT
                 if left_child.eval_type != right_child.eval_type:
                     if left_child.eval_type == SemanticType.INT: left_child.needs_cast_to_float = True
@@ -139,13 +144,13 @@ class SemanticAnalyzer:
                                 original_token=node.token)
 
     def _build_mem_node(self, node: ASTNode, line_index: int) -> AnnotatedASTNode:
-        if node.children:  # Escrita
+        if node.children:
             child = self.analyze(node.children[0], line_index)
             if child.eval_type not in (SemanticType.INT, SemanticType.FLOAT):
                 raise SemanticError("'MEM' (write) expects a numeric operand.", child.original_token)
             return AnnotatedASTNode(label=node.label, children=[child], eval_type=child.eval_type, sign=child.sign,
                                     original_token=node.token)
-        else:  # Leitura
+        else:
             return AnnotatedASTNode(label=node.label, children=[], eval_type=SemanticType.FLOAT, sign=SignType.UNKNOWN,
                                     original_token=node.token)
 
@@ -163,12 +168,12 @@ class SemanticAnalyzer:
         if if_node.label != 'IF':
             raise SemanticError(f"The first operand for 'THEN' must be 'IF', but got '{if_node.label}'.",
                                 if_node.original_token)
-        # Propaga as anotações do ramo THEN
+
         return AnnotatedASTNode(label=node.label, children=[if_node, then_branch], eval_type=then_branch.eval_type,
                                 sign=then_branch.sign, original_token=node.token)
 
     def _build_else_node(self, node: ASTNode, line_index: int) -> AnnotatedASTNode:
-        # A lógica do _build_then está implícita aqui, pois seus filhos já foram analisados
+
         then_node_annotated = self.analyze(node.children[0], line_index)
         else_branch_annotated = self.analyze(node.children[1], line_index)
 
@@ -184,7 +189,6 @@ class SemanticAnalyzer:
                 f"Incompatible types in conditional branches: THEN branch has type {then_type.name}, but ELSE branch has type {else_type.name}. Types must be identical.",
                 node.token)
 
-        # O sinal é desconhecido pois não sabemos qual ramo será executado
         return AnnotatedASTNode(label=node.label, children=[then_node_annotated, else_branch_annotated],
                                 eval_type=then_type, sign=SignType.UNKNOWN, original_token=node.token)
 
@@ -196,6 +200,5 @@ class SemanticAnalyzer:
             raise SemanticError(f"The loop count for 'FOR' must be an INT, but got {iterations.eval_type.name}.",
                                 iterations.original_token)
 
-        # O FOR retorna o valor/tipo/sinal da última iteração do corpo
         return AnnotatedASTNode(label=node.label, children=[iterations, body_expr], eval_type=body_expr.eval_type,
                                 sign=body_expr.sign, original_token=node.token)

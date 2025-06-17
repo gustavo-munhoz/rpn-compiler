@@ -11,6 +11,6 @@ class AnnotatedASTNode:
     label: str
     children: List["AnnotatedASTNode"]
     eval_type: SemanticType
-    sign: SignType # Sinal só será conhecido para literais
+    sign: SignType
     original_token: Optional[Token] = None
     needs_cast_to_float: bool = False
