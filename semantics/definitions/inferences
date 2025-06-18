@@ -55,9 +55,9 @@ e1 MEM: float
 
 # FOR
 
-  e1 : T1
-------------- (FOR-FLOAT)
-e1 FOR: float
+e1 : int    e2 : T
+------------------- (FOR)
+   e1 e2 FOR: T
 
 # IF
 
