@@ -27,7 +27,6 @@ class TempVarManager:
         """Cria um novo nome de variável temporária e armazena sua definição."""
         self.count += 1
         temp_name = f"T{self.count}"
-        # Armazena a definição para ser usada no segmento de dados depois
         self.definitions.append(f"{temp_name}_L: .byte 1")
         self.definitions.append(f"{temp_name}_H: .byte 1")
         return temp_name
@@ -41,8 +40,7 @@ def float_to_ieee754_half(value: float) -> tuple[int, int]:
     """
     Converte um float para dois bytes (low, high) no formato IEEE 754 half-precision.
     """
-    # 'e' é o especificador de formato para half-precision float (16 bits)
-    # '<' garante o byte order little-endian, se necessário (geralmente padrão)
+
     packed_bytes = struct.pack('<e', value)
     low_byte = packed_bytes[0]
     high_byte = packed_bytes[1]
@@ -159,7 +157,6 @@ class CodeGenerator:
         if not final_loc:
             return
 
-        # Adiciona código para salvar o resultado final no array 'results'
         self.main_code.append(f"; Store result of line {line_index + 1} from {final_loc} into results array")
         self.main_code.append(self._generate_load_operand(final_loc, "r24", "r25"))
 
@@ -167,7 +164,6 @@ class CodeGenerator:
         self.main_code.append(f"    STS results+{offset}, r24")
         self.main_code.append(f"    STS results+{offset + 1}, r25")
 
-        # Adiciona código para imprimir o resultado via serial
         self.main_code.append("    RCALL print_f16")
 
     def _generate_expression(self, node: ASTNode, line_index: int) -> str:
@@ -179,23 +175,16 @@ class CodeGenerator:
             self.main_code.append(f"; Attempting to use constant folded value: {node.const_value}")
 
             try:
-                # --- CORREÇÃO AQUI ---
-                # Garante que o valor seja um float antes de passá-lo para a função de empacotamento.
                 const_as_float = float(node.const_value)
 
                 low, high = float_to_ieee754_half(const_as_float)
 
-                # Se for bem-sucedido, gera o código otimizado.
-                # Usamos o node.const_value original para a chamada do _generate_load_operand
-                # que também espera uma string de um número.
                 self.main_code.append(self._generate_load_operand(str(node.const_value), "r24", "r25"))
                 self.main_code.append(f"    STS {temp_var}_L, r24")
                 self.main_code.append(f"    STS {temp_var}_H, r25")
                 return temp_var
 
             except (OverflowError, struct.error):
-                # Agora capturamos ambos os erros possíveis.
-                # Se der erro, o valor é grande demais ou de tipo incorreto.
                 self.main_code.append(
                     f"; Constant value {node.const_value} is out of range for 16-bit float. Generating full expression instead.")
                 pass
@@ -222,8 +211,6 @@ class CodeGenerator:
             return False
 
     def _generate_literal(self, node: ASTNode) -> str:
-        # Literais não geram código sozinhos, apenas retornam seu valor como uma string.
-        # O nó pai que os usa é responsável por gerar o LDI.
         return node.label
 
     def _generate_load_operand(self, operand_loc: str, reg_low: str, reg_high: str) -> str:
@@ -262,33 +249,28 @@ class CodeGenerator:
         else_label = self.label_gen.new_label("else")
         end_if_label = self.label_gen.new_label("endif")
 
-        # Cria uma variável temporária para guardar o resultado da expressão.
         temp_final = self.temp_manager.new_temp()
 
-        # Avalia a condição
         condition_loc = self._generate_expression(condition, line_index)
         self.main_code.append(f"; IF-ELSE expression")
         self.main_code.append(self._generate_load_operand(condition_loc, "r24", "r25"))
         self.main_code.append("    RCALL is_f16_zero")
         self.main_code.append(f"    BREQ {else_label}")
 
-        # Bloco THEN
         then_loc = self._generate_expression(then_branch, line_index)
         self.main_code.append(self._generate_load_operand(then_loc, "r24", "r25"))
-        self.main_code.append(f"    STS {temp_final}_L, r24")  # Salva o resultado na temp
+        self.main_code.append(f"    STS {temp_final}_L, r24")
         self.main_code.append(f"    STS {temp_final}_H, r25")
         self.main_code.append(f"    RJMP {end_if_label}")
 
-        # Bloco ELSE
         self.main_code.append(f"{else_label}:")
         else_loc = self._generate_expression(else_branch, line_index)
         self.main_code.append(self._generate_load_operand(else_loc, "r24", "r25"))
-        self.main_code.append(f"    STS {temp_final}_L, r24")  # Salva o resultado na temp
+        self.main_code.append(f"    STS {temp_final}_L, r24")
         self.main_code.append(f"    STS {temp_final}_H, r25")
 
         self.main_code.append(f"{end_if_label}:")
 
-        # Retorna a localização do resultado final.
         return temp_final
 
     def _generate_for(self, node: ASTNode, line_index: int) -> str:
@@ -297,10 +279,8 @@ class CodeGenerator:
         loop_start_label = self.label_gen.new_label("for_start")
         loop_end_label = self.label_gen.new_label("for_end")
 
-        # Cria uma variável temporária ANTES do laço para guardar o último resultado.
         temp_for_result = self.temp_manager.new_temp()
 
-        # Configura o contador do loop
         self.main_code.append(f"; FOR loop setup")
         iterations_loc = self._generate_expression(iterations_node, line_index)
         self.main_code.append(self._generate_load_operand(iterations_loc, "r24", "r25"))
@@ -313,9 +293,7 @@ class CodeGenerator:
         self.main_code.append("    TST r20")
         self.main_code.append(f"    BREQ {loop_end_label}")
 
-        # Executa o corpo e obtém a localização do resultado da iteração
         body_result_loc = self._generate_expression(body_node, line_index)
-        # Salva o resultado desta iteração na nossa variável temporária
         self.main_code.append(self._generate_load_operand(body_result_loc, "r24", "r25"))
         self.main_code.append(f"    STS {temp_for_result}_L, r24")
         self.main_code.append(f"    STS {temp_for_result}_H, r25")
@@ -325,7 +303,6 @@ class CodeGenerator:
 
         self.main_code.append(f"{loop_end_label}:")
 
-        # Retorna a localização do último valor calculado.
         return temp_for_result
 
     def _generate_res(self, node: ASTNode, line_index: int) -> str:
@@ -357,7 +334,6 @@ class CodeGenerator:
                 f"    STS {temp_result}_L, r24",
                 f"    STS {temp_result}_H, r25"
             ]
-        # MEM de leitura (não tem filhos)
         else:
             code = [
                 f"; MEM read",
