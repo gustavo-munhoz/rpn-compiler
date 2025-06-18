@@ -1,0 +1,68 @@
+==========================================
+# Operadores binários: +, -, *
+
+e1 : int    e2 : int
+-------------------- (OP-INT)
+    e1 op e2 : int
+
+e1 : T1    e2 : T2
+T1 != int ou T2 != int
+-------------------- (OP-FLOAT)
+    e1 op e2 : float
+
+# Operadores de divisão "div": |, %
+
+e1 : T1    e2 : T2
+------------------ (DIV-FLOAT)
+    e1 div e2 : float
+
+# Divisão inteira: /
+
+e1 : T1    e2 : T2
+------------------ (DIV-INT)
+    e1 / e2 : int
+
+# Exponenciação: ^
+
+e1 : int    e2 : int
+-------------------- (EXP-INT)
+    e1 ^ e2 : int
+
+e1 : float    e2 : int
+---------------------- (EXP-FLOAT)
+    e1 ^ e2 : float
+==========================================
+
+# RES
+
+  e1 : T1
+----------- (RES)
+e1 RES: float
+
+# MEM
+
+  e1 : int
+----------- (MEM-INT)
+e1 MEM: int
+
+  e1 : float
+------------- (MEM-FLOAT)
+e1 MEM: float
+
+
+------------- (MEM)
+e1 MEM: float
+
+# FOR
+
+  e1 : T1
+------------- (FOR-FLOAT)
+e1 FOR: float
+
+# IF
+
+e1 : int or float
+e2 : T
+e3 : T
+------------------ (IF)
+e1 IF e2 THEN e3 ELSE : T
