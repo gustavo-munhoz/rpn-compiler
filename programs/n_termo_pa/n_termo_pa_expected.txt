@@ -1,4 +1,4 @@
-# Cálculo de n-ésimo termo da PA
+# Cálculo de soma PA
 ## N = 10
 ## a0 = 5
 ## r = 3
